@@ -84,6 +84,7 @@ async function main() {
     var cs = getComputedStyle(document.documentElement);
     var login = document.querySelector('.adm-login');
     var btn = document.querySelector('.adm-btn-primary');
+    var oauthBtn = document.querySelector('[data-act="oauth-start"]');
     return {
       title: document.title,
       hasLogin: !!login,
@@ -91,6 +92,7 @@ async function main() {
       hasDeviceTab: !!document.querySelector('[data-pane="oauth"]'),
       hasPatTab: !!document.querySelector('[data-pane="pat"]'),
       hasClientIdInput: !!document.querySelector('[data-role="cid"]'),
+      oauthButtonText: oauthBtn ? oauthBtn.textContent.trim() : null,
       bodyBgVar: cs.getPropertyValue('--board-bg-color').trim(),
       h1: login ? (login.querySelector('h1') || {}).textContent : null,
       rootChildren: root ? root.children.length : -1,

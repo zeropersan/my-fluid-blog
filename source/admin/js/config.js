@@ -16,9 +16,9 @@ export const BRANCH = 'main';
 
 /** 默认 OAuth App 的 Client ID。
  *  Client ID 是公开信息，可以安全地写在源码里。
- *  留空则登录页只显示 PAT 方式，并提示去「设置」里填 Client ID。
- *  也可以直接在后台「设置」中填写，无需重新部署。 */
-export const DEFAULT_CLIENT_ID = '';
+ *  填好后登录页不再显示输入框，只剩一个「使用 GitHub 登录」按钮。
+ *  留空则首次登录时需要手动填一次（之后会记住）。 */
+export const DEFAULT_CLIENT_ID = 'Ov23liLSrq5yD9nJL4Nx';
 
 /** Device Flow 需要的权限。仓库是公开的，public_repo 足够，
  *  不必申请全量 repo 权限，最小化授权范围。 */
