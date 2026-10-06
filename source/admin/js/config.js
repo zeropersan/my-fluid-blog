@@ -67,6 +67,8 @@ export const LS = {
   imgUrlMode: 'fluid-admin-img-url-mode',
   /** 进行中的 Device Flow，用于手机切换 App 后页面被回收时恢复轮询 */
   deviceFlow: 'fluid-admin-device-flow',
+  /** 口令加密后的 Token 保险箱 */
+  vault: 'fluid-admin-vault',
   autosave: (path) => `fluid-admin-autosave:${path}`,
 };
 

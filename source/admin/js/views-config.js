@@ -11,6 +11,77 @@ import {
   $, $$, confirmDialog, ensureYaml, esc, formatBytes, icon, relativeTime, toast,
 } from './util.js';
 import { getIn, replaceYamlBlock, setYamlScalar, toFlowList } from './yamltext.js';
+import {
+  clearVault, decryptToken, encryptToken, isSupported, readVault, saveVault,
+} from './vault.js';
+
+const MIN_PASSWORD = 6;
+
+/** 设置 / 修改管理口令的表单 */
+function vaultFormHtml(needOld) {
+  return `
+    <div class="adm-fm-grid" style="margin-top:.75rem">
+      ${needOld ? `
+        <label class="adm-field adm-field-full">
+          <span class="adm-label">当前口令</span>
+          <input class="adm-input" type="password" data-role="vault-old" autocomplete="current-password">
+        </label>` : ''}
+      <label class="adm-field">
+        <span class="adm-label">新口令</span>
+        <input class="adm-input" type="password" data-role="vault-new"
+               autocomplete="new-password" placeholder="至少 ${MIN_PASSWORD} 位">
+      </label>
+      <label class="adm-field">
+        <span class="adm-label">确认新口令</span>
+        <input class="adm-input" type="password" data-role="vault-new2" autocomplete="new-password">
+      </label>
+    </div>
+    <div class="adm-row adm-row-wrap">
+      <button class="adm-btn adm-btn-primary adm-btn-sm" data-act="vault-save">保存</button>
+      <button class="adm-btn adm-btn-ghost adm-btn-sm" data-act="vault-cancel">取消</button>
+    </div>
+    <div data-role="vault-msg"></div>`;
+}
+
+function vaultCardHtml(ctx) {
+  const ready = !!readVault();
+  const cryptoOk = isSupported();
+  const createdAt = readVault() && readVault().at ? new Date(readVault().at).toLocaleString() : '';
+
+  if (!cryptoOk) {
+    return `
+      <div class="adm-card adm-card-pad" style="margin-bottom:1rem">
+        <h3 style="margin-top:0">管理口令</h3>
+        <p class="adm-small adm-muted" style="margin-top:0">
+          当前环境不支持 WebCrypto（需要 https 或 localhost），无法加密保存 Token。
+        </p>
+      </div>`;
+  }
+
+  return `
+    <div class="adm-card adm-card-pad" style="margin-bottom:1rem">
+      <h3 style="margin-top:0">管理口令</h3>
+      ${ready ? `
+        <p class="adm-small adm-muted" style="margin-top:0">
+          <span class="adm-badge adm-badge-ok">已启用</span>
+          Token 已用口令经 PBKDF2 + AES-GCM 加密保存在本机，明文不再落盘。
+          ${createdAt ? `<br>设置于 ${esc(createdAt)}` : ''}
+        </p>
+        <div class="adm-row adm-row-wrap">
+          <button class="adm-btn adm-btn-ghost" data-act="vault-change">修改口令</button>
+          <button class="adm-btn adm-btn-danger" data-act="vault-reset">删除口令</button>
+        </div>
+      ` : `
+        <p class="adm-small adm-muted" style="margin-top:0">
+          <span class="adm-badge adm-badge-draft">未启用</span>
+          当前 Token <strong>以明文保存在本机</strong>。
+          设置管理口令后，Token 会被加密保存，下次打开后台只需输入口令。
+        </p>
+        <button class="adm-btn adm-btn-primary" data-act="vault-setup">设置管理口令</button>
+      `}
+      <div data-role="vault-panel"></div>
+    </div>`;
+}
 
 /* ==========================================================================
    共享：读取 / 保存 YAML 配置文件（保留注释）
@@ -514,6 +585,8 @@ export const settingsView = {
         </p>
       </div>
 
+      ${vaultCardHtml(ctx)}
+
       <div class="adm-card adm-card-pad" style="margin-bottom:1rem">
         <h3 style="margin-top:0">仓库</h3>
         <label class="adm-field">
@@ -578,6 +651,82 @@ export const settingsView = {
     const cidEl = $('[data-role="client-id"]', root);
     const modeEl = $('[data-role="img-mode"]', root);
     const compressEl = $('[data-role="compress"]', root);
+
+    /* ---------- 管理口令 ---------- */
+    const vaultPanel = $('[data-role="vault-panel"]', root);
+
+    const vaultMsg = (text, ok) => {
+      const box = $('[data-role="vault-msg"]', vaultPanel);
+      if (!box) return;
+      box.innerHTML = text ? `<div class="adm-neterr" style="margin-top:.6rem;border-left-color:${ok ? '#28a745' : '#d9534f'}">${esc(text)}</div>` : '';
+    };
+
+    const openVaultForm = (needOld) => {
+      if (!vaultPanel) return;
+      vaultPanel.innerHTML = vaultFormHtml(needOld);
+      const first = vaultPanel.querySelector('input');
+      if (first) first.focus();
+    };
+
+    async function saveVaultPassword(needOld) {
+      const oldPw = needOld ? ($('[data-role="vault-old"]', vaultPanel) || {}).value || '' : '';
+      const pw = ($('[data-role="vault-new"]', vaultPanel) || {}).value || '';
+      const pw2 = ($('[data-role="vault-new2"]', vaultPanel) || {}).value || '';
+
+      if (pw.length < MIN_PASSWORD) return vaultMsg(`新口令至少 ${MIN_PASSWORD} 位`);
+      if (pw !== pw2) return vaultMsg('两次输入的新口令不一致');
+
+      const token = gh.getToken();
+      if (!token) return vaultMsg('当前没有可加密的 Token，请重新登录后再试');
+
+      if (needOld) {
+        // 已登录状态下改口令也要验证旧口令，防止有人趁会话未锁直接换掉
+        try {
+          await decryptToken(readVault(), oldPw);
+        } catch (e) {
+          return vaultMsg('当前口令不正确');
+        }
+      }
+
+      try {
+        const v = await encryptToken(token, pw);
+        saveVault(v);
+        // 关键：明文不再落盘
+        gh.setToken(token, false);
+        vaultPanel.innerHTML = '';
+        const card = vaultPanel.closest('.adm-card');
+        if (card) card.outerHTML = vaultCardHtml(ctx);
+        toast('管理口令已保存，Token 已加密', 'ok');
+        ctx.reload();
+      } catch (e) {
+        vaultMsg('保存失败：' + e.message);
+      }
+    }
+
+    root.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      switch (btn.dataset.act) {
+        case 'vault-setup': openVaultForm(false); break;
+        case 'vault-change': openVaultForm(true); break;
+        case 'vault-cancel': if (vaultPanel) vaultPanel.innerHTML = ''; break;
+        case 'vault-save': await saveVaultPassword(!!readVault()); break;
+        case 'vault-reset': {
+          const ok = await confirmDialog({
+            title: '删除管理口令',
+            body: '将删除本机保存的加密 Token 与口令，并退出登录。<br>' +
+                  '<span class="adm-small">下次需要重新粘贴 GitHub Token。</span>',
+            okText: '删除并退出', danger: true,
+          });
+          if (!ok) return;
+          clearVault();
+          gh.logout();
+          location.reload();
+          break;
+        }
+        default: break;
+      }
+    });
 
     repoEl.addEventListener('change', () => {
       const v = repoEl.value.trim();

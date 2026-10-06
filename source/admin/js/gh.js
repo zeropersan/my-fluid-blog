@@ -24,10 +24,21 @@ export function getToken() { return token; }
 export function getUser() { return currentUser; }
 export function isLoggedIn() { return !!token; }
 
-export function setToken(value) {
+/**
+ * 设置当前 Token
+ * @param {string} value
+ * @param {boolean} [persist=true] 是否写入 localStorage。
+ *   用口令解锁时应传 false —— Token 已在内存中，明文不应再落盘，
+ *   保险箱里的密文才是它唯一的持久化形式。
+ */
+export function setToken(value, persist = true) {
   token = value || '';
-  if (token) safeSet(LS.token, token);
-  else safeRemove(LS.token);
+  if (!token || persist === false) {
+    // 不持久化时，顺手清掉可能残留的明文
+    safeRemove(LS.token);
+    return;
+  }
+  safeSet(LS.token, token);
 }
 
 export function logout() {

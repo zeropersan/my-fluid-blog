@@ -10,6 +10,8 @@ import * as gh from './gh.js';
 import { $, clear, confirmDialog, copyText, esc, h, icon, toast } from './util.js';
 import { editorView, imagesView, newPostView, pagesView, postsView } from './views-content.js';
 import { deployView, settingsView, siteView, themeView, toggleView } from './views-config.js';
+import { renderLogin as renderLoginImpl } from './login.js';
+import { hasVault, isSupported } from './vault.js';
 
 /* ==========================================================================
    路由表
@@ -130,352 +132,9 @@ function rejectLogin(login, reason) {
    ========================================================================== */
 
 function renderLogin(root) {
-  const repo = detectRepo();
-  const clientId = safeGet(LS.clientId) || DEFAULT_CLIENT_ID;
-  const hasClientId = !!clientId;
-
-  root.innerHTML = `
-    <div class="adm-login">
-      <div class="adm-card adm-login-card">
-        <div class="adm-login-head">
-          ${icon('posts')}
-          <h1>博客后台</h1>
-          <p class="adm-small adm-muted">
-            <span class="adm-mono">${esc(repo.full)}</span>
-          </p>
-        </div>
-
-        <div class="adm-tabs" role="tablist">
-          <button class="adm-tab is-active" data-tab="oauth" role="tab">使用 GitHub 登录</button>
-          <button class="adm-tab" data-tab="pat" role="tab">用 Token 登录</button>
-        </div>
-
-        <div data-pane="oauth">
-          <div data-role="oauth-start">
-            ${hasClientId ? `
-              <button class="adm-btn adm-btn-primary adm-btn-block" data-act="oauth-start">
-                ${icon('user')}<span>使用 GitHub 登录</span>
-              </button>
-              <p class="adm-hint" style="text-align:center;margin-top:.6rem">
-                会显示一个设备码，在 GitHub 上确认即可
-              </p>
-            ` : `
-              <label class="adm-field">
-                <span class="adm-label">OAuth App Client ID</span>
-                <input class="adm-input adm-mono" data-role="cid" placeholder="Iv1.xxxx 或 Ov23li...">
-                <span class="adm-hint">只需填写一次，之后会记住。也可以先去「设置」填好，这里就不会再问。</span>
-              </label>
-              <button class="adm-btn adm-btn-primary adm-btn-block" data-act="oauth-start">
-                ${icon('user')}<span>开始 GitHub 授权</span>
-              </button>
-            `}
-            <details style="margin-top:1rem">
-              <summary class="adm-small" style="cursor:pointer">还没有 OAuth App？点这里看创建步骤</summary>
-              <ol class="adm-steps" style="margin-top:.5rem">
-                <li>GitHub <strong>Settings → Developer settings → OAuth Apps → New OAuth App</strong></li>
-                <li>Homepage URL：<code>${esc(location.origin + siteRoot())}</code></li>
-                <li>Redirect URI：<code>${esc(location.origin + siteRoot() + 'admin/')}</code>（Device Flow 不会用到，填了只是为了让表单能提交）</li>
-                <li><strong>勾选 Enable Device Flow</strong>（关键，不勾无法登录）</li>
-                <li>把生成的 Client ID 填到「设置」里</li>
-              </ol>
-            </details>
-          </div>
-
-          <div data-role="oauth-error" class="adm-neterr adm-hidden"></div>
-
-          <div data-role="oauth-wait" class="adm-hidden">
-            <p class="adm-small">请在 GitHub 页面输入下面的设备码：</p>
-            <code class="adm-device-code" data-role="user-code"></code>
-            <div class="adm-row" style="margin-bottom:1rem">
-              <button class="adm-btn adm-btn-ghost adm-btn-sm" data-act="copy-code">${icon('copy')}<span>复制设备码</span></button>
-              <button class="adm-btn adm-btn-ghost adm-btn-sm" data-act="open-verify">${icon('external')}<span>打开授权页</span></button>
-            </div>
-            <p class="adm-small adm-muted" data-role="oauth-status">等待授权…</p>
-            <button class="adm-btn adm-btn-ghost adm-btn-block" data-act="oauth-cancel" style="margin-top:.75rem">取消</button>
-          </div>
-        </div>
-
-        <div data-pane="pat" class="adm-hidden">
-          <label class="adm-field">
-            <span class="adm-label">Personal Access Token</span>
-            <input class="adm-input adm-mono" type="password" data-role="pat" placeholder="github_pat_... 或 ghp_..." autocomplete="off">
-            <span class="adm-hint">
-              建议用 <strong>Fine-grained token</strong>，仅授权本仓库，权限：
-              Contents 读写、Actions 读写、Workflows（如需手动重部署）。
-            </span>
-          </label>
-          <button class="adm-btn adm-btn-primary adm-btn-block" data-act="pat-login">
-            ${icon('check')}<span>验证并登录</span>
-          </button>
-        </div>
-      </div>
-    </div>`;
-
-  let cancelled = false;
-  let verifyUri = 'https://github.com/login/device';
-
-  const el = (sel) => $(sel, root);
-
-  /** 从「等待授权」退回「开始授权」 */
-  const showStart = () => {
-    const wait = el('[data-role="oauth-wait"]');
-    const start = el('[data-role="oauth-start"]');
-    if (wait) wait.classList.add('adm-hidden');
-    if (start) start.classList.remove('adm-hidden');
-  };
-
-  const showWait = (userCode, statusText) => {
-    const start = el('[data-role="oauth-start"]');
-    const wait = el('[data-role="oauth-wait"]');
-    if (start) start.classList.add('adm-hidden');
-    if (wait) wait.classList.remove('adm-hidden');
-    const codeEl = el('[data-role="user-code"]');
-    if (codeEl) codeEl.textContent = userCode;
-    const st = el('[data-role="oauth-status"]');
-    if (st) st.textContent = statusText;
-  };
-
-  const showNetError = (html) => {
-    const box = el('[data-role="oauth-error"]');
-    if (!box) return;
-    box.innerHTML = html;
-    box.classList.remove('adm-hidden');
-  };
-  const hideNetError = () => {
-    const box = el('[data-role="oauth-error"]');
-    if (box) { box.classList.add('adm-hidden'); box.innerHTML = ''; }
-  };
-
-  /* ---------- 进行中的授权：持久化，供手机切 App 回来后续跑 ---------- */
-  const readPending = () => {
-    try {
-      const raw = safeGet(LS.deviceFlow);
-      if (!raw) return null;
-      const o = JSON.parse(raw);
-      if (!o || !o.deviceCode || !o.expiresAt) return null;
-      if (o.expiresAt <= Date.now()) { safeRemove(LS.deviceFlow); return null; }
-      return o;
-    } catch (e) { return null; }
-  };
-  const savePending = (o) => safeSet(LS.deviceFlow, JSON.stringify(o));
-  const clearPending = () => safeRemove(LS.deviceFlow);
-
-  /**
-   * 执行（或续跑）一次 Device Flow
-   * @param {string} cid
-   * @param {object} [resume] 已保存的流程；不传表示全新发起
-   */
-  async function runFlow(cid, resume) {
-    hideNetError();
-
-    let flow = resume;
-    if (!flow) {
-      const dev = await gh.startDeviceFlow(cid);
-      flow = {
-        clientId: cid,
-        deviceCode: dev.device_code,
-        userCode: dev.user_code,
-        verificationUri: dev.verification_uri,
-        interval: dev.interval,
-        expiresAt: Date.now() + dev.expires_in * 1000,
-      };
-      savePending(flow);
-    }
-
-    verifyUri = flow.verificationUri || verifyUri;
-    const remainMin = Math.max(0, Math.round((flow.expiresAt - Date.now()) / 60000));
-    showWait(flow.userCode, `等待授权…（设备码还有约 ${remainMin} 分钟有效）`);
-
-    cancelled = false;
-    const remainSec = Math.max(10, Math.round((flow.expiresAt - Date.now()) / 1000));
-    const result = await gh.pollDeviceFlow(
-      flow.clientId, flow.deviceCode, flow.interval, remainSec,
-      (state) => {
-        if (cancelled) return;
-        const st = el('[data-role="oauth-status"]');
-        if (!st) return;
-        if (state === 'slow_down') st.textContent = '请求过于频繁，正在放慢轮询…';
-        else if (state === 'network') st.textContent = '网络抖动，正在重试…';
-        else st.textContent = '仍在等待你在 GitHub 上确认…';
-      }
-    );
-    if (cancelled) return;
-
-    clearPending();
-    gh.setToken(result.accessToken);
-    ctx.repoFull = detectRepo().full;
-
-    const user = await gh.fetchUser();
-    if (!isAllowedUser(user.login)) {
-      rejectLogin(user.login, '不在允许名单内，已拒绝登录');
-      showStart();
-      return;
-    }
-    // 与 PAT 路径保持一致：确认对该仓库确有写权限
-    const repoInfo = await gh.getRepoInfo(ctx.repoFull);
-    if (!(repoInfo.permissions && repoInfo.permissions.push)) {
-      gh.logout();
-      showStart();
-      toast(`账号 ${user.login} 对该仓库没有写权限`, 'err', 9000);
-      return;
-    }
-
-    toast('登录成功，欢迎 ' + user.login, 'ok');
-    renderApp(document.getElementById('adm-root'));
-  }
-
-  /**
-   * 网络层失败时的诊断
-   * fetch 抛出的 "Failed to fetch" 没有信息量，这里再探一次 api.github.com
-   * （它开放 CORS，可以直接探），从而区分「只有 github.com 不通」和「整体断网」。
-   */
-  async function diagnoseNetwork(err) {
-    const host = err.host || 'github.com';
-    showStart();
-    const st = el('[data-role="oauth-status"]');
-    if (st) st.textContent = '正在检测网络…';
-
-    const apiOk = await gh.probeApiReachable();
-    const headline = apiOk
-      ? `连不上 <code>${esc(host)}</code>，但 <code>api.github.com</code> 是通的。`
-      : `连不上 <code>${esc(host)}</code>，<code>api.github.com</code> 也连不上。`;
-
-    const causes = apiOk
-      ? ['当前网络屏蔽了 github.com 这个域名（移动数据、公司或校园网常见）',
-         '浏览器的广告拦截 / 云加速 / 代理插件拦截了跨域请求',
-         '该设备没有走代理，而 github.com 需要代理才能访问']
-      : ['设备当前似乎整体断网', '需要检查 Wi-Fi 或移动数据连接'];
-
-    showNetError(`
-      <strong>${headline}</strong>
-      <p class="adm-small" style="margin:.5rem 0 .35rem">可能的原因：</p>
-      <ul class="adm-steps" style="margin:0 0 .6rem">
-        ${causes.map((c) => `<li>${esc(c)}</li>`).join('')}
-      </ul>
-      <p class="adm-small" style="margin:0 0 .6rem">
-        <strong>建议</strong>：${apiOk
-          ? '你的账号权限没问题，改用 Token 方式登录即可 —— Token 走 api.github.com，不受这个域名影响。'
-          : '先恢复网络再重试，或改用 Token 方式登录。'}
-      </p>
-      <div class="adm-row adm-row-wrap">
-        <button class="adm-btn adm-btn-sm adm-btn-primary" data-act="goto-pat">改用 Token 登录</button>
-        <button class="adm-btn adm-btn-sm adm-btn-ghost" data-act="oauth-start">重试</button>
-      </div>
-    `);
-    toast('登录失败：' + err.message, 'err', 9000);
-  }
-
-  // 上一次授权还没完成（手机切到 GitHub 时浏览器把页面回收了），自动续跑
-  const pending = readPending();
-  if (pending) {
-    runFlow(pending.clientId, pending).catch((e) => {
-      if (e.network) diagnoseNetwork(e);
-      else { showStart(); toast('授权失败：' + e.message, 'err', 9000); }
-    });
-  }
-
-  // 监听挂在登录容器上而不是 root 上：
-  // 登录成功后 root.innerHTML 会被主界面替换，旧的监听器随之一起销毁，
-  // 否则登录页的处理器会一直留在 root 上继续响应主界面的点击。
-  const box = $('.adm-login', root);
-  box.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-act], [data-tab]');
-    if (!btn) return;
-
-    // 切换标签
-    if (btn.dataset.tab) {
-      root.querySelectorAll('.adm-tab').forEach((t) => t.classList.toggle('is-active', t === btn));
-      root.querySelectorAll('[data-pane]').forEach((p) => {
-        p.classList.toggle('adm-hidden', p.dataset.pane !== btn.dataset.tab);
-      });
-      return;
-    }
-
-    const act = btn.dataset.act;
-
-    /* ---------- PAT 登录 ---------- */
-    if (act === 'pat-login') {
-      const input = $('[data-role="pat"]', root);
-      const pat = input.value.trim();
-      if (!pat) return toast('请填入 Token', 'err');
-      btn.disabled = true;
-      try {
-        const res = await gh.validatePat(pat, detectRepo().full);
-        if (!isAllowedUser(res.user.login)) {
-          rejectLogin(res.user.login, '不在允许名单内，已拒绝登录');
-          return;
-        }
-        if (!res.canWrite) {
-          gh.logout();
-          toast('该 Token 对仓库没有写权限', 'err', 7000);
-          return;
-        }
-        gh.setToken(pat);
-        ctx.repoFull = detectRepo().full;
-        toast('登录成功，欢迎 ' + res.user.login, 'ok');
-        renderApp(document.getElementById('adm-root'));
-      } catch (err) {
-        toast('登录失败：' + err.message, 'err', 7000);
-      } finally {
-        btn.disabled = false;
-      }
-      return;
-    }
-
-    /* ---------- 发起 Device Flow ---------- */
-    if (act === 'oauth-start') {
-      // Client ID 已配置时登录页不渲染输入框，此时从配置/本地读取
-      const cidEl = el('[data-role="cid"]');
-      const cid = (cidEl ? cidEl.value : (safeGet(LS.clientId) || DEFAULT_CLIENT_ID)).trim();
-      if (!cid) return toast('请先填写 Client ID', 'err');
-      safeSet(LS.clientId, cid);
-
-      btn.disabled = true;
-      try {
-        await runFlow(cid, null);
-      } catch (err) {
-        if (cancelled) {
-          showStart();
-        } else if (err.network) {
-          await diagnoseNetwork(err);
-        } else {
-          showStart();
-          toast('授权失败：' + err.message, 'err', 9000);
-        }
-      } finally {
-        btn.disabled = false;
-      }
-      return;
-    }
-
-    /* ---------- 网络错误时一键切到 Token 登录 ---------- */
-    if (act === 'goto-pat') {
-      const patTab = root.querySelector('[data-tab="pat"]');
-      if (patTab) patTab.click();
-      return;
-    }
-
-    if (act === 'copy-code') {
-      const code = $('[data-role="user-code"]', root).textContent.trim();
-      const ok = await copyText(code);
-      toast(ok ? '设备码已复制' : '复制失败，请手动输入', ok ? 'ok' : 'err');
-      return;
-    }
-
-    if (act === 'open-verify') {
-      window.open(verifyUri, '_blank', 'noopener');
-      return;
-    }
-
-    if (act === 'oauth-cancel') {
-      cancelled = true;
-      clearPending();
-      showStart();
-      toast('已取消授权', 'info');
-    }
-  });
+  // 实现见 js/login.js：口令登录 / Token 登录 / GitHub 授权三种入口
+  return renderLoginImpl(root, { ctx, renderApp, isAllowedUser, rejectLogin });
 }
-
 /* ==========================================================================
    主界面
    ========================================================================== */
@@ -640,18 +299,31 @@ async function boot() {
   // 配色
   applyColorScheme(currentScheme());
 
+  // 已经设过管理口令：一律先解锁。
+  // 同时清掉可能残留的明文 Token —— 保险箱存在时明文就不该再起作用，
+  // 否则「设了口令」只是形式，绕过口令依旧能直接进入。
+  if (hasVault()) {
+    gh.logout();
+    renderLogin(root);
+    return;
+  }
+
   if (!gh.isLoggedIn()) {
     renderLogin(root);
     return;
   }
 
-  // 已有 token：先静默校验，失效或不在名单内则回到登录页
+  // 没有口令、但本机存有明文 Token（旧版遗留或直接粘贴登录）：
+  // 继续可用，但提示去设置口令
   try {
     const user = await gh.fetchUser();
     if (!isAllowedUser(user.login)) {
       rejectLogin(user.login, '不在允许名单内，已自动退出');
       renderLogin(root);
       return;
+    }
+    if (isSupported()) {
+      toast('提示：可到「设置」启用管理口令，把 Token 加密保存', 'info', 7000);
     }
   } catch (e) {
     gh.logout();
