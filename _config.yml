@@ -31,7 +31,10 @@ archive_dir: archives
 category_dir: categories
 code_dir: downloads/code
 i18n_dir: :lang
+## 后台管理页面原样拷贝，不经过主题渲染
+## 必须以相对路径引用站点资源（../css/main.css），否则项目页子路径下会 404
 skip_render:
+  - 'admin/**'
 
 # Writing
 new_post_name: :title.md # File name of new posts

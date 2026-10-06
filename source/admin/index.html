@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="theme-color" content="#2f4154">
+  <link rel="icon" href="../img/fluid.png">
+  <title>博客后台 · Fluid</title>
+
+  <!--
+    路径说明：本页由 Hexo 原样拷贝（_config.yml 里 skip_render: admin/**），
+    路径不会被 url_for 改写，因此全部使用相对路径。
+    这样无论站点部署在域名根目录还是 /my-fluid-blog/ 子路径下都能正确解析。
+  -->
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="admin.css">
+
+  <script>
+    /* 尽早应用配色偏好，避免首屏闪白（与主题 color-schema.js 的策略一致） */
+    (function () {
+      try {
+        var v = localStorage.getItem('fluid-admin-color-scheme');
+        if (v === 'dark' || v === 'light') {
+          document.documentElement.setAttribute('data-user-color-scheme', v);
+        }
+      } catch (e) { /* 隐私模式下 localStorage 可能抛错，忽略 */ }
+    })();
+  </script>
+</head>
+
+<body class="adm-body">
+  <div id="adm-root" class="adm-root" role="application" aria-label="博客后台管理"></div>
+
+  <div id="adm-toast" class="adm-toast-wrap" role="status" aria-live="polite"></div>
+
+  <div id="adm-modal" class="adm-modal" hidden>
+    <div class="adm-modal-mask" data-modal-close></div>
+    <div class="adm-modal-panel" role="dialog" aria-modal="true">
+      <p class="adm-modal-title"></p>
+      <div class="adm-modal-body"></div>
+      <div class="adm-modal-actions"></div>
+    </div>
+  </div>
+
+  <noscript>
+    <div class="adm-noscript">后台需要 JavaScript 才能运行，请开启后重试。</div>
+  </noscript>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+
+</html>

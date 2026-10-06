@@ -1,0 +1,1164 @@
+/* ==========================================================================
+   Fluid 博客后台 · 样式
+   --------------------------------------------------------------------------
+   本文件不重新定义任何颜色。所有色值、圆角、阴影均取自主题
+   css/main.css 暴露的 CSS 变量，因此：
+     · 修改 _config.fluid.yml 的 color.* 后，后台配色自动跟随
+     · 明暗模式由主题的 data-user-color-scheme / prefers-color-scheme 驱动
+     · Markdown 预览直接复用主题的 .markdown-body，所见即所得
+   类名统一以 adm- 前缀，避免与主题样式冲突。
+   ========================================================================== */
+
+/* ---------- 1. 覆盖主题的 body 布局（主题为固定导航栏预留了 padding） ---------- */
+.adm-body {
+  margin: 0;
+  padding: 0 !important;
+  min-height: 100vh;
+  background-color: var(--body-bg-color);
+  color: var(--text-color);
+  -webkit-text-size-adjust: 100%;
+}
+
+.adm-body *,
+.adm-body *::before,
+.adm-body *::after {
+  box-sizing: border-box;
+}
+
+.adm-root {
+  min-height: 100vh;
+}
+
+/* ---------- 2. 设计令牌（全部指向主题变量） ---------- */
+.adm-body {
+  --adm-radius-card: 6px;
+  --adm-radius-ctl: 4px;
+  --adm-shadow-card: 0 2px 5px 0 rgba(0, 0, 0, 0.16), 0 2px 10px 0 rgba(0, 0, 0, 0.12);
+  --adm-shadow-float: 0 5px 11px 0 rgba(0, 0, 0, 0.18), 0 4px 15px 0 rgba(0, 0, 0, 0.15);
+  --adm-accent: var(--link-hover-color);
+  --adm-mono: SFMono-Regular, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+  --adm-sidebar-w: 232px;
+  --adm-topbar-h: 56px;
+}
+
+/* ---------- 3. 通用元件 ---------- */
+.adm-card {
+  background-color: var(--board-bg-color);
+  border-radius: var(--adm-radius-card);
+  box-shadow: var(--adm-shadow-card);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.adm-card-pad {
+  padding: 1.25rem;
+}
+
+.adm-muted {
+  color: var(--sec-text-color);
+}
+
+.adm-small {
+  font-size: 0.85rem;
+}
+
+.adm-mono {
+  font-family: var(--adm-mono);
+}
+
+.adm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.adm-row-wrap {
+  flex-wrap: wrap;
+}
+
+.adm-spacer {
+  flex: 1 1 auto;
+}
+
+.adm-hidden {
+  display: none !important;
+}
+
+.adm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* 图标统一尺寸：iconfont 与内联 SVG 视觉对齐 */
+.adm-ico {
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.adm-ico svg {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: block;
+}
+
+/* ---------- 4. 按钮 ---------- */
+.adm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.9rem;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--button-bg-color);
+  color: var(--text-color);
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out,
+              border-color 0.2s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+.adm-btn:hover:not(:disabled) {
+  background-color: var(--button-hover-bg-color);
+}
+
+.adm-btn:focus-visible {
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 2px var(--adm-accent);
+}
+
+.adm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.adm-btn-primary {
+  background-color: var(--adm-accent);
+  color: #fff;
+}
+
+.adm-btn-primary:hover:not(:disabled) {
+  background-color: var(--adm-accent);
+  filter: brightness(1.08);
+}
+
+.adm-btn-ghost {
+  background-color: transparent;
+  border-color: var(--line-color);
+}
+
+.adm-btn-ghost:hover:not(:disabled) {
+  background-color: var(--link-hover-bg-color);
+}
+
+.adm-btn-danger {
+  background-color: transparent;
+  border-color: var(--line-color);
+  color: #d9534f;
+}
+
+.adm-btn-danger:hover:not(:disabled) {
+  background-color: rgba(217, 83, 79, 0.12);
+  border-color: #d9534f;
+}
+
+.adm-btn-sm {
+  min-height: 30px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.adm-btn-block {
+  width: 100%;
+}
+
+/* 纯图标按钮 */
+.adm-iconbtn {
+  padding: 0.4rem;
+  min-width: 34px;
+  min-height: 34px;
+  background-color: transparent;
+  border-color: transparent;
+}
+
+.adm-iconbtn:hover:not(:disabled) {
+  background-color: var(--link-hover-bg-color);
+}
+
+/* ---------- 5. 表单 ---------- */
+.adm-field {
+  display: block;
+  margin-bottom: 0.9rem;
+}
+
+.adm-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.adm-hint {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--sec-text-color);
+  line-height: 1.5;
+}
+
+.adm-input,
+.adm-textarea,
+.adm-select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  min-height: 38px;
+  border: 1px solid var(--line-color);
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--board-bg-color);
+  color: var(--text-color);
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out,
+              background-color 0.2s ease-in-out;
+}
+
+.adm-input::placeholder,
+.adm-textarea::placeholder {
+  color: var(--sec-text-color);
+  opacity: 0.75;
+}
+
+.adm-input:focus,
+.adm-textarea:focus,
+.adm-select:focus {
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 2px rgba(48, 169, 222, 0.18);
+}
+
+.adm-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* 紧凑输入（导航菜单行等） */
+.adm-input-sm {
+  padding: 0.3rem 0.45rem;
+  min-height: 32px;
+  font-size: 0.84rem;
+}
+
+.adm-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--sec-text-color) 50%),
+                    linear-gradient(135deg, var(--sec-text-color) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* 开关 */
+.adm-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.adm-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.adm-switch-track {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background-color: var(--line-color);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.adm-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease-in-out;
+}
+
+.adm-switch input:checked + .adm-switch-track {
+  background-color: var(--adm-accent);
+}
+
+.adm-switch input:checked + .adm-switch-track::after {
+  transform: translateX(16px);
+}
+
+.adm-switch input:focus-visible + .adm-switch-track {
+  box-shadow: 0 0 0 2px var(--adm-accent);
+}
+
+.adm-switch-text {
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+/* ---------- 6. 布局 ---------- */
+.adm-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* 侧栏 */
+.adm-sidebar {
+  flex: none;
+  width: var(--adm-sidebar-w);
+  background-color: var(--board-bg-color);
+  border-right: 1px solid var(--line-color);
+  padding: 1rem 0.75rem;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  transition: background-color 0.2s ease-in-out, transform 0.25s ease-in-out;
+}
+
+.adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 1rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.adm-brand .adm-ico {
+  font-size: 1.35rem;
+  color: var(--adm-accent);
+}
+
+.adm-brand-sub {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--sec-text-color);
+  margin-top: 0.1rem;
+}
+
+.adm-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adm-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: none;
+  border-radius: var(--adm-radius-ctl);
+  background-color: transparent;
+  color: var(--text-color);
+  font-size: 0.92rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.adm-nav-item:hover {
+  background-color: var(--link-hover-bg-color);
+}
+
+.adm-nav-item.is-active {
+  background-color: var(--link-hover-bg-color);
+  color: var(--adm-accent);
+  font-weight: 600;
+}
+
+.adm-nav-item .adm-ico {
+  font-size: 1.05rem;
+}
+
+.adm-nav-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--sec-text-color);
+}
+
+.adm-side-foot {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line-color);
+}
+
+.adm-user {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.5rem;
+  min-width: 0;
+}
+
+.adm-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: var(--line-color);
+}
+
+.adm-user-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 主区 */
+.adm-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: var(--adm-topbar-h);
+  padding: 0.5rem 1rem;
+  background-color: var(--board-bg-color);
+  border-bottom: 1px solid var(--line-color);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.adm-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-content {
+  flex: 1 1 auto;
+  padding: 1.25rem;
+}
+
+.adm-container {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.adm-container-wide {
+  max-width: 1400px;
+}
+
+/* 菜单按钮只在窄屏出现 */
+.adm-menubtn {
+  display: none;
+}
+
+/* 侧栏遮罩（窄屏） */
+.adm-sidebar-mask {
+  display: none;
+}
+
+/* ---------- 7. 登录页 ---------- */
+.adm-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.adm-login-card {
+  width: 100%;
+  max-width: 460px;
+  padding: 1.75rem;
+}
+
+.adm-login-head {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.adm-login-head .adm-ico {
+  font-size: 2.5rem;
+  color: var(--adm-accent);
+}
+
+.adm-login-head h1 {
+  margin: 0.6rem 0 0.3rem;
+  font-size: 1.3rem;
+}
+
+.adm-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 1.25rem;
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--body-bg-color);
+}
+
+.adm-tab {
+  flex: 1 1 0;
+  padding: 0.45rem 0.5rem;
+  border: none;
+  border-radius: var(--adm-radius-ctl);
+  background-color: transparent;
+  color: var(--sec-text-color);
+  font-size: 0.88rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.adm-tab.is-active {
+  background-color: var(--board-bg-color);
+  color: var(--text-color);
+  font-weight: 600;
+  box-shadow: var(--adm-shadow-card);
+}
+
+/* 设备码展示 */
+.adm-device-code {
+  display: block;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px dashed var(--line-color);
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--body-bg-color);
+  font-family: var(--adm-mono);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  color: var(--adm-accent);
+  user-select: all;
+}
+
+.adm-steps {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  color: var(--sec-text-color);
+  line-height: 1.7;
+}
+
+.adm-steps a {
+  color: var(--adm-accent);
+}
+
+/* ---------- 8. 文章 / 页面列表 ---------- */
+.adm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.adm-searchbox {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.adm-searchbox .adm-ico {
+  position: absolute;
+  top: 50%;
+  left: 0.6rem;
+  transform: translateY(-50%);
+  color: var(--sec-text-color);
+  pointer-events: none;
+}
+
+.adm-searchbox .adm-input {
+  padding-left: 2rem;
+}
+
+.adm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adm-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line-color);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.adm-list-item:last-child {
+  border-bottom: none;
+}
+
+.adm-list-item:hover {
+  background-color: var(--link-hover-bg-color);
+}
+
+.adm-list-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.adm-list-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.2rem;
+}
+
+.adm-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--sec-text-color);
+}
+
+.adm-list-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.adm-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+
+.adm-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background-color: var(--link-hover-bg-color);
+  color: var(--sec-text-color);
+}
+
+.adm-badge-draft {
+  background-color: rgba(240, 173, 78, 0.18);
+  color: #d08a1e;
+}
+
+.adm-badge-ok {
+  background-color: rgba(40, 167, 69, 0.16);
+  color: #1f7a33;
+}
+
+.adm-badge-err {
+  background-color: rgba(217, 83, 79, 0.16);
+  color: #c9302c;
+}
+
+.adm-badge-run {
+  background-color: rgba(48, 169, 222, 0.16);
+  color: var(--adm-accent);
+}
+
+/* ---------- 9. 编辑器 ---------- */
+.adm-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.adm-pane {
+  min-width: 0;
+}
+
+.adm-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--line-color);
+}
+
+.adm-editor-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-editor-textarea {
+  width: 100%;
+  min-height: 62vh;
+  padding: 1rem;
+  border: none;
+  border-radius: 0 0 var(--adm-radius-card) var(--adm-radius-card);
+  background-color: var(--board-bg-color);
+  color: var(--text-color);
+  font-family: var(--adm-mono);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+}
+
+.adm-editor-textarea.is-dragover {
+  background-color: var(--link-hover-bg-color);
+  box-shadow: inset 0 0 0 2px var(--adm-accent);
+}
+
+.adm-preview {
+  min-height: 62vh;
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+
+.adm-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line-color);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sec-text-color);
+}
+
+/* front-matter 表单 */
+.adm-fm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 1rem;
+}
+
+.adm-fm-grid .adm-field-full {
+  grid-column: 1 / -1;
+}
+
+/* ---------- 10. Markdown 预览（复用主题 .markdown-body，只做必要补充） ---------- */
+.adm-preview.markdown-body {
+  font-size: 0.95rem;
+  background-color: transparent;
+}
+
+.adm-preview.markdown-body pre {
+  overflow-x: auto;
+}
+
+/* ---------- 11. 图片库 ---------- */
+.adm-img-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.adm-img-cell {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line-color);
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--body-bg-color);
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s ease-in-out, transform 0.15s ease-in-out;
+}
+
+.adm-img-cell:hover {
+  border-color: var(--adm-accent);
+  transform: translateY(-2px);
+}
+
+.adm-img-cell:focus-visible {
+  box-shadow: 0 0 0 2px var(--adm-accent);
+}
+
+.adm-img-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.adm-img-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.3rem 0.4rem;
+  background-color: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 0.7rem;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-drop {
+  padding: 1.5rem;
+  border: 2px dashed var(--line-color);
+  border-radius: var(--adm-radius-card);
+  text-align: center;
+  color: var(--sec-text-color);
+  transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+}
+
+.adm-drop.is-over {
+  border-color: var(--adm-accent);
+  background-color: var(--link-hover-bg-color);
+}
+
+/* ---------- 12. 部署 / 状态 ---------- */
+.adm-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  font-size: 0.88rem;
+}
+
+.adm-kv dt {
+  color: var(--sec-text-color);
+}
+
+.adm-kv dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.adm-log {
+  max-height: 320px;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--highlight-bg-color);
+  color: var(--text-color);
+  font-family: var(--adm-mono);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- 13. Toast ---------- */
+.adm-toast-wrap {
+  position: fixed;
+  z-index: 3000;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.adm-toast {
+  max-width: min(88vw, 380px);
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--board-bg-color);
+  color: var(--text-color);
+  box-shadow: var(--adm-shadow-float);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: adm-toast-in 0.22s ease-out;
+}
+
+.adm-toast-ok {
+  border-left: 3px solid #28a745;
+}
+
+.adm-toast-err {
+  border-left: 3px solid #d9534f;
+}
+
+.adm-toast-info {
+  border-left: 3px solid var(--adm-accent);
+}
+
+@keyframes adm-toast-in {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 14. Modal ---------- */
+.adm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.adm-modal[hidden] {
+  display: none;
+}
+
+.adm-modal-mask {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.adm-modal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 1.25rem;
+  border-radius: var(--adm-radius-card);
+  background-color: var(--board-bg-color);
+  box-shadow: var(--adm-shadow-float);
+}
+
+.adm-modal-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.adm-modal-body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--sec-text-color);
+}
+
+.adm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+/* ---------- 15. 空态 / 加载 ---------- */
+.adm-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--sec-text-color);
+  font-size: 0.9rem;
+}
+
+.adm-empty .adm-ico {
+  font-size: 2.25rem;
+  display: block;
+  margin: 0 auto 0.6rem;
+  opacity: 0.6;
+}
+
+.adm-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--line-color);
+  border-top-color: var(--adm-accent);
+  border-radius: 50%;
+  animation: adm-spin 0.7s linear infinite;
+}
+
+@keyframes adm-spin {
+  to { transform: rotate(360deg); }
+}
+
+.adm-noscript {
+  margin: 2rem auto;
+  max-width: 460px;
+  padding: 1rem;
+  border-radius: var(--adm-radius-card);
+  background-color: var(--board-bg-color);
+  text-align: center;
+}
+
+/* ---------- 16. 响应式 ---------- */
+@media (max-width: 991.98px) {
+  /* 侧栏改为抽屉 */
+  .adm-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 40;
+    transform: translateX(-100%);
+    box-shadow: var(--adm-shadow-float);
+  }
+
+  .adm-shell.is-nav-open .adm-sidebar {
+    transform: translateX(0);
+  }
+
+  .adm-sidebar-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease-in-out, visibility 0.25s ease-in-out;
+  }
+
+  .adm-shell.is-nav-open .adm-sidebar-mask {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .adm-menubtn {
+    display: inline-flex;
+  }
+
+  /* 编辑器改为单栏上下堆叠 */
+  .adm-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adm-editor-textarea,
+  .adm-preview {
+    min-height: 46vh;
+  }
+
+  .adm-preview {
+    max-height: 60vh;
+  }
+}
+
+@media (max-width: 767px) {
+  .adm-content {
+    padding: 0.85rem;
+  }
+
+  .adm-card-pad {
+    padding: 1rem;
+  }
+
+  .adm-login-card {
+    padding: 1.25rem;
+  }
+
+  .adm-list-item {
+    padding: 0.7rem 0.8rem;
+  }
+
+  /* 触屏下操作按钮常驻可点区域 */
+  .adm-list-actions .adm-btn {
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  .adm-img-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+}
+
+@media (max-width: 575px) {
+  .adm-topbar {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .adm-title {
+    font-size: 0.98rem;
+  }
+
+  /* 侧栏占满更窄的屏 */
+  .adm-sidebar {
+    width: min(82vw, var(--adm-sidebar-w));
+  }
+
+  .adm-toast-wrap {
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .adm-toast {
+    max-width: none;
+  }
+
+  .adm-modal {
+    padding: 0.85rem;
+    align-items: flex-end;
+  }
+
+  .adm-modal-panel {
+    max-height: 80vh;
+    border-radius: var(--adm-radius-card) var(--adm-radius-card) 0 0;
+  }
+}
+
+/* ---------- 17. 无障碍：尊重减少动效偏好 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .adm-body *,
+  .adm-body *::before,
+  .adm-body *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
