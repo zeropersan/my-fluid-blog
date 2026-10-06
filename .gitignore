@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+db.json
+*.log
+node_modules/
+public/
+.deploy*/
+_multiconfig.yml
+
+# 移动端验证脚本产生的截图，可由 tools/mobile-check.mjs 随时重新生成
+tools/shots/
