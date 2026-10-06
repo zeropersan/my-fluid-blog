@@ -234,21 +234,57 @@ const FM_RE = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
  */
 export function parseFrontMatter(raw) {
   const text = String(raw == null ? '' : raw);
+
+  let yamlText;
+  let body;
+
   const m = FM_RE.exec(text);
-  if (!m) return { data: {}, body: text, hasFm: false };
+  if (m) {
+    yamlText = m[1];
+    body = text.slice(m[0].length);
+  } else {
+    // 容错恢复：早期版本的正则缺陷会把结束分隔符粘到最后一个值后面
+    // （date: 2026-10-06 18:52:14---），使 front-matter 永远闭合不了、
+    // 整篇文章被当成正文。这里把它拆回来，已经写坏的文件仍可正常编辑。
+    const recovered = recoverStuckDelimiter(text);
+    if (!recovered) return { data: {}, body: text, hasFm: false };
+    yamlText = recovered.yamlText;
+    body = recovered.body;
+  }
 
   const yaml = window.jsyaml;
   let data = {};
   if (yaml) {
     try {
-      const parsed = yaml.load(m[1], { schema: yaml.CORE_SCHEMA });
+      const parsed = yaml.load(yamlText, { schema: yaml.CORE_SCHEMA });
       if (parsed && typeof parsed === 'object') data = parsed;
     } catch (e) {
-      // 解析失败时保留原文，避免用户数据丢失
-      return { data: {}, body: text.slice(m[0].length), hasFm: true, error: e.message };
+      return { data: {}, body, hasFm: true, error: e.message };
     }
   }
-  return { data, body: text.slice(m[0].length), hasFm: true };
+  return { data, body, hasFm: true };
+}
+
+/**
+ * 恢复「结束分隔符被粘在值末尾」的畸形 front-matter。
+ * 只在前两层匹配尝试都失败后调用，且要求中间内容确实像 YAML（含 key: 行），
+ * 避免把以 --- 开头的普通正文误判为 front-matter。
+ */
+function recoverStuckDelimiter(text) {
+  const lines = text.split(/\r?\n/);
+  if (!lines.length || lines[0].trim() !== '---') return null;
+
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '') continue;
+    const hit = /^(.*\S)[ \t]*---[ \t]*$/.exec(lines[i]);
+    if (!hit || hit[1].trim() === '') continue;
+
+    const yamlLines = lines.slice(1, i).concat(hit[1]);
+    if (!yamlLines.some((l) => /^[A-Za-z_][\w-]*:/.test(l))) return null;
+
+    return { yamlText: yamlLines.join('\n'), body: lines.slice(i + 1).join('\n') };
+  }
+  return null;
 }
 
 const DATE_LIKE = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
@@ -275,8 +311,10 @@ export function buildFrontMatter(data, body) {
     return String(body == null ? '' : body);
   }
 
-  // 把形如日期的值还原成不带引号的写法，与 Hexo 习惯保持一致
-  dumped = dumped.replace(/^(\s*)(date|updated):\s*(['"])([^'"]+)\3\s*$/gm, (all, indent, key, q, val) => {
+  // 把形如日期的值还原成不带引号的写法，与 Hexo 习惯保持一致。
+  // 注意必须用 [ \t] 而不是 \s：\s 包含换行符，贪婪匹配会把行尾的 \n 一起吃掉，
+  // 导致结束分隔符被粘到值后面（date: 2026-10-06 18:52:14---），front-matter 再也闭合不了。
+  dumped = dumped.replace(/^([ \t]*)(date|updated):[ \t]*(['"])([^'"]*)\3[ \t]*$/gm, (all, indent, key, q, val) => {
     return DATE_LIKE.test(val) ? `${indent}${key}: ${val}` : all;
   });
 

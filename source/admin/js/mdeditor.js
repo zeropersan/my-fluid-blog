@@ -173,8 +173,17 @@ export class MarkdownEditor {
     ).join('');
 
     this.mount.innerHTML = `
-      <div class="adm-editor-grid">
-        <div class="adm-pane adm-card">
+      <div class="adm-editor-tabs" role="tablist">
+        <button type="button" class="adm-tab is-active" data-mdtab="edit" role="tab">
+          ${icon('edit')}<span>编辑</span>
+        </button>
+        <button type="button" class="adm-tab" data-mdtab="preview" role="tab">
+          ${icon('eye')}<span>预览</span>
+        </button>
+      </div>
+
+      <div class="adm-editor-grid" data-mobile-pane="edit">
+        <div class="adm-pane adm-pane-edit adm-card">
           <div class="adm-pane-head">
             ${icon('edit')}<span>编辑</span>
             <span class="adm-spacer"></span>
@@ -187,7 +196,7 @@ export class MarkdownEditor {
               spellcheck="false"></textarea>
           </div>
         </div>
-        <div class="adm-pane adm-card">
+        <div class="adm-pane adm-pane-preview adm-card">
           <div class="adm-pane-head">${icon('eye')}<span>预览</span></div>
           <div class="adm-preview markdown-body" data-role="preview"></div>
         </div>
@@ -195,6 +204,8 @@ export class MarkdownEditor {
       <input type="file" accept="image/*" multiple hidden data-role="file">
     `;
 
+    this.grid = $('.adm-editor-grid', this.mount);
+    this.tabBar = $('.adm-editor-tabs', this.mount);
     this.input = $('[data-role="input"]', this.mount);
     this.preview = $('[data-role="preview"]', this.mount);
     this.fileInput = $('[data-role="file"]', this.mount);
@@ -212,8 +223,14 @@ export class MarkdownEditor {
       previewDebounced();
     });
 
-    // 工具栏（含键盘可达性）
+    // 工具栏与移动端标签栏（同一个委托监听）
     this.mount.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-mdtab]');
+      if (tab) {
+        e.preventDefault();
+        this.setMobilePane(tab.dataset.mdtab);
+        return;
+      }
       const btn = e.target.closest('[data-md]');
       if (!btn) return;
       e.preventDefault();
@@ -342,6 +359,23 @@ export class MarkdownEditor {
     updateCount(this.countEl, next);
     if (this.opts.onChange) this.opts.onChange(next);
     this.refreshPreview();
+  }
+
+  /**
+   * 移动端在「编辑 / 预览」之间切换。
+   * 桌面端两个面板并排显示，data-mobile-pane 只在下述媒体查询里生效，不影响宽屏。
+   */
+  setMobilePane(pane) {
+    if (!this.grid || (pane !== 'edit' && pane !== 'preview')) return;
+    this.grid.dataset.mobilePane = pane;
+    if (this.tabBar) {
+      Array.prototype.forEach.call(this.tabBar.querySelectorAll('[data-mdtab]'), (t) => {
+        const on = t.dataset.mdtab === pane;
+        t.classList.toggle('is-active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    if (pane === 'preview') this.refreshPreview();
   }
 
   async refreshPreview() {

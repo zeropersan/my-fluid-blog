@@ -730,6 +730,31 @@
   align-items: start;
 }
 
+/* 移动端的「编辑 / 预览」标签栏，宽屏隐藏 */
+.adm-editor-tabs {
+  display: none;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 0.75rem;
+  border-radius: var(--adm-radius-ctl);
+  background-color: var(--board-bg-color);
+  box-shadow: var(--adm-shadow-card);
+}
+
+.adm-editor-tabs .adm-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex: 1 1 0;
+}
+
+.adm-editor-tabs .adm-tab.is-active {
+  background-color: var(--adm-accent);
+  color: #fff;
+  box-shadow: none;
+}
+
 .adm-pane {
   min-width: 0;
 }
@@ -1074,18 +1099,28 @@
     display: inline-flex;
   }
 
-  /* 编辑器改为单栏上下堆叠 */
+  /* 编辑器改为单栏，并在「编辑 / 预览」两个标签间切换 */
+  .adm-editor-tabs {
+    display: flex;
+  }
+
   .adm-editor-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .adm-editor-grid[data-mobile-pane="edit"] .adm-pane-preview,
+  .adm-editor-grid[data-mobile-pane="preview"] .adm-pane-edit {
+    display: none;
+  }
+
+  /* 只显示一个面板，纵向空间可以给足 */
   .adm-editor-textarea,
   .adm-preview {
-    min-height: 46vh;
+    min-height: 62vh;
   }
 
   .adm-preview {
-    max-height: 60vh;
+    max-height: none;
   }
 }
 

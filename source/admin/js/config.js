@@ -24,6 +24,16 @@ export const DEFAULT_CLIENT_ID = '';
  *  不必申请全量 repo 权限，最小化授权范围。 */
 export const OAUTH_SCOPE = 'public_repo';
 
+/**
+ * 允许登录的 GitHub 用户名白名单。
+ * ---------------------------------------------------------------------------
+ * 留空数组 [] = 不做限制（任何 GitHub 账号都能进到界面，但只有对该仓库有
+ * 写权限的人才能保存——写操作最终由 GitHub 服务端把关）。
+ * 填了则严格限制：不在名单内的账号即使授权成功也会被拒绝并立即清除 token，
+ * 连界面都进不去。用户名不区分大小写。
+ */
+export const ALLOWED_USERS = ['zeropersan'];
+
 /** 内容路径 */
 export const PATHS = {
   posts: 'source/_posts',

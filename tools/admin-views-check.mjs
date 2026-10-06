@@ -291,21 +291,76 @@ async function main() {
   })()`);
   await shot('admin-v9-editor-desktop.png');
 
-  // 移动端编辑器
+  // 移动端编辑器：应是单栏，且「编辑 / 预览」用标签切换
   await S('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
   await sleep(1500);
+
   results.editorMobile = await evaluate(`(function(){
     var grid = document.querySelector('.adm-editor-grid');
+    var tabs = document.querySelector('.adm-editor-tabs');
+    var editPane = document.querySelector('.adm-pane-edit');
+    var prevPane = document.querySelector('.adm-pane-preview');
     var cs = grid ? getComputedStyle(grid).gridTemplateColumns : null;
     return {
       columns: cs,
       singleColumn: cs ? cs.trim().split(/\\s+/).length === 1 : null,
-      overflow: document.documentElement.scrollWidth > window.innerWidth + 1
+      overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+      tabsVisible: tabs ? getComputedStyle(tabs).display !== 'none' : false,
+      initialPane: grid ? grid.dataset.mobilePane : null,
+      editVisible: editPane ? getComputedStyle(editPane).display !== 'none' : null,
+      previewHidden: prevPane ? getComputedStyle(prevPane).display === 'none' : null
     };
   })()`);
-  await shot('admin-v10-editor-mobile.png');
+  await shot('admin-v10-editor-mobile-edit-tab.png');
 
+  // 切到预览标签
+  const tabSwitch = await evaluate(`(function(){
+    var t = document.querySelector('[data-mdtab="preview"]');
+    if (!t) return null;
+    t.click();
+    var grid = document.querySelector('.adm-editor-grid');
+    var editPane = document.querySelector('.adm-pane-edit');
+    var prevPane = document.querySelector('.adm-pane-preview');
+    return {
+      paneAttr: grid.dataset.mobilePane,
+      editHidden: getComputedStyle(editPane).display === 'none',
+      previewVisible: getComputedStyle(prevPane).display !== 'none',
+      activeTab: (document.querySelector('.adm-editor-tabs .adm-tab.is-active') || {}).dataset
+        ? document.querySelector('.adm-editor-tabs .adm-tab.is-active').dataset.mdtab : null,
+      previewHasContent: !!prevPane.querySelector('h2')
+    };
+  })()`);
+  await sleep(600);
+  results.editorMobileTabSwitch = tabSwitch;
+  await shot('admin-v11-editor-mobile-preview-tab.png');
+
+  // 切回编辑标签，确认可逆
+  results.editorMobileTabBack = await evaluate(`(function(){
+    document.querySelector('[data-mdtab="edit"]').click();
+    var grid = document.querySelector('.adm-editor-grid');
+    return {
+      paneAttr: grid.dataset.mobilePane,
+      editVisible: getComputedStyle(document.querySelector('.adm-pane-edit')).display !== 'none'
+    };
+  })()`);
+
+  // 宽屏下标签栏应隐藏、两个面板都显示
   await S('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await sleep(1200);
+  results.editorDesktop = await evaluate(`(function(){
+    var tabs = document.querySelector('.adm-editor-tabs');
+    var editPane = document.querySelector('.adm-pane-edit');
+    var prevPane = document.querySelector('.adm-pane-preview');
+    var cs = getComputedStyle(document.querySelector('.adm-editor-grid')).gridTemplateColumns;
+    return {
+      tabsHidden: tabs ? getComputedStyle(tabs).display === 'none' : null,
+      columns: cs,
+      twoColumns: cs.trim().split(/\\s+/).length === 2,
+      editVisible: getComputedStyle(editPane).display !== 'none',
+      previewVisible: getComputedStyle(prevPane).display !== 'none'
+    };
+  })()`);
+
   await sleep(600);
 
   /* ---------- 关键：站点配置保存后注释是否保留 ---------- */

@@ -3,7 +3,7 @@
  */
 
 import {
-  DEFAULT_CLIENT_ID, LS, PATHS, SOCIAL_FIELDS, THEME_TOGGLES,
+  ALLOWED_USERS, DEFAULT_CLIENT_ID, LS, PATHS, SOCIAL_FIELDS, THEME_TOGGLES,
   detectRepo, safeGet, safeSet, siteRoot,
 } from './config.js';
 import * as gh from './gh.js';
@@ -500,6 +500,20 @@ export const settingsView = {
     const compress = safeGet(LS.compress) !== '0';
 
     return `
+      <div class="adm-card adm-card-pad" style="margin-bottom:1rem">
+        <h3 style="margin-top:0">访问控制</h3>
+        <p class="adm-small adm-muted" style="margin-top:0">
+          允许登录的 GitHub 账号：
+          ${ALLOWED_USERS.length
+            ? ALLOWED_USERS.map((u) => `<code>${esc(u)}</code>`).join('、')
+            : '<strong>未限制</strong>（任何 GitHub 账号都能进入界面，但只有对该仓库有写权限的人才能保存）'}
+        </p>
+        <p class="adm-small adm-muted">
+          名单与 OAuth Client ID 都在 <code>source/admin/js/config.js</code> 里配置，
+          改完提交即生效，不需要在这里操作。
+        </p>
+      </div>
+
       <div class="adm-card adm-card-pad" style="margin-bottom:1rem">
         <h3 style="margin-top:0">仓库</h3>
         <label class="adm-field">

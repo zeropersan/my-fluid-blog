@@ -3,7 +3,7 @@
  */
 
 import {
-  BRANCH, DEFAULT_CLIENT_ID, LS, OAUTH_SCOPE,
+  ALLOWED_USERS, BRANCH, DEFAULT_CLIENT_ID, LS, OAUTH_SCOPE,
   detectRepo, safeGet, safeSet, safeRemove, siteRoot,
 } from './config.js';
 import * as gh from './gh.js';
@@ -109,12 +109,30 @@ function schemeButtonHtml() {
 }
 
 /* ==========================================================================
+   用户白名单
+   ========================================================================== */
+
+/** 用户名是否在允许名单内；名单为空表示不限制 */
+function isAllowedUser(login) {
+  if (!ALLOWED_USERS.length) return true;
+  const name = String(login || '').toLowerCase();
+  return ALLOWED_USERS.some((u) => String(u).toLowerCase() === name);
+}
+
+/** 拒绝登录：清掉 token 并给出提示 */
+function rejectLogin(login, reason) {
+  gh.logout();
+  toast(`账号 ${login} ${reason}`, 'err', 9000);
+}
+
+/* ==========================================================================
    登录页
    ========================================================================== */
 
 function renderLogin(root) {
   const repo = detectRepo();
   const clientId = safeGet(LS.clientId) || DEFAULT_CLIENT_ID;
+  const hasClientId = !!clientId;
 
   root.innerHTML = `
     <div class="adm-login">
@@ -134,22 +152,31 @@ function renderLogin(root) {
 
         <div data-pane="oauth">
           <div data-role="oauth-start">
-            <label class="adm-field">
-              <span class="adm-label">OAuth App Client ID</span>
-              <input class="adm-input adm-mono" data-role="cid" value="${esc(clientId)}" placeholder="Iv1.xxxx 或 Ov23li...">
-              <span class="adm-hint">Client ID 是公开信息。留空则请先用 Token 登录，再在「设置」里填写。</span>
-            </label>
-            <button class="adm-btn adm-btn-primary adm-btn-block" data-act="oauth-start">
-              ${icon('user')}<span>开始 GitHub 授权</span>
-            </button>
+            ${hasClientId ? `
+              <button class="adm-btn adm-btn-primary adm-btn-block" data-act="oauth-start">
+                ${icon('user')}<span>使用 GitHub 登录</span>
+              </button>
+              <p class="adm-hint" style="text-align:center;margin-top:.6rem">
+                会显示一个设备码，在 GitHub 上确认即可
+              </p>
+            ` : `
+              <label class="adm-field">
+                <span class="adm-label">OAuth App Client ID</span>
+                <input class="adm-input adm-mono" data-role="cid" placeholder="Iv1.xxxx 或 Ov23li...">
+                <span class="adm-hint">只需填写一次，之后会记住。也可以先去「设置」填好，这里就不会再问。</span>
+              </label>
+              <button class="adm-btn adm-btn-primary adm-btn-block" data-act="oauth-start">
+                ${icon('user')}<span>开始 GitHub 授权</span>
+              </button>
+            `}
             <details style="margin-top:1rem">
               <summary class="adm-small" style="cursor:pointer">还没有 OAuth App？点这里看创建步骤</summary>
               <ol class="adm-steps" style="margin-top:.5rem">
                 <li>GitHub <strong>Settings → Developer settings → OAuth Apps → New OAuth App</strong></li>
                 <li>Homepage URL：<code>${esc(location.origin + siteRoot())}</code></li>
-                <li>Authorization callback URL：<code>${esc(location.origin + siteRoot() + 'admin/')}</code></li>
+                <li>Redirect URI：<code>${esc(location.origin + siteRoot() + 'admin/')}</code>（Device Flow 不会用到，填了只是为了让表单能提交）</li>
                 <li><strong>勾选 Enable Device Flow</strong>（关键，不勾无法登录）</li>
-                <li>把生成的 Client ID 填到上面</li>
+                <li>把生成的 Client ID 填到「设置」里</li>
               </ol>
             </details>
           </div>
@@ -185,6 +212,14 @@ function renderLogin(root) {
   let cancelled = false;
   let verifyUri = 'https://github.com/login/device';
 
+  /** 从「等待授权」退回「开始授权」 */
+  const showStart = () => {
+    const wait = $('[data-role="oauth-wait"]', root);
+    const start = $('[data-role="oauth-start"]', root);
+    if (wait) wait.classList.add('adm-hidden');
+    if (start) start.classList.remove('adm-hidden');
+  };
+
   // 监听挂在登录容器上而不是 root 上：
   // 登录成功后 root.innerHTML 会被主界面替换，旧的监听器随之一起销毁，
   // 否则登录页的处理器会一直留在 root 上继续响应主界面的点击。
@@ -212,7 +247,12 @@ function renderLogin(root) {
       btn.disabled = true;
       try {
         const res = await gh.validatePat(pat, detectRepo().full);
+        if (!isAllowedUser(res.user.login)) {
+          rejectLogin(res.user.login, '不在允许名单内，已拒绝登录');
+          return;
+        }
         if (!res.canWrite) {
+          gh.logout();
           toast('该 Token 对仓库没有写权限', 'err', 7000);
           return;
         }
@@ -230,7 +270,9 @@ function renderLogin(root) {
 
     /* ---------- 发起 Device Flow ---------- */
     if (act === 'oauth-start') {
-      const cid = $('[data-role="cid"]', root).value.trim();
+      // Client ID 已配置时登录页不渲染输入框，此时从配置/本地读取
+      const cidEl = $('[data-role="cid"]', root);
+      const cid = (cidEl ? cidEl.value : (safeGet(LS.clientId) || DEFAULT_CLIENT_ID)).trim();
       if (!cid) return toast('请先填写 Client ID', 'err');
       safeSet(LS.clientId, cid);
 
@@ -254,15 +296,27 @@ function renderLogin(root) {
 
         gh.setToken(token);
         ctx.repoFull = detectRepo().full;
+
         const user = await gh.fetchUser();
+        if (!isAllowedUser(user.login)) {
+          rejectLogin(user.login, '不在允许名单内，已拒绝登录');
+          showStart();
+          return;
+        }
+        // 与 PAT 路径保持一致：确认对该仓库确有写权限
+        const repoInfo = await gh.getRepoInfo(ctx.repoFull);
+        if (!(repoInfo.permissions && repoInfo.permissions.push)) {
+          gh.logout();
+          showStart();
+          toast(`账号 ${user.login} 对该仓库没有写权限`, 'err', 9000);
+          return;
+        }
+
         toast('登录成功，欢迎 ' + user.login, 'ok');
         renderApp(document.getElementById('adm-root'));
       } catch (err) {
         if (!cancelled) toast('授权失败：' + err.message, 'err', 8000);
-        const wait = $('[data-role="oauth-wait"]', root);
-        const start = $('[data-role="oauth-start"]', root);
-        if (wait) wait.classList.add('adm-hidden');
-        if (start) start.classList.remove('adm-hidden');
+        showStart();
       } finally {
         btn.disabled = false;
       }
@@ -459,9 +513,14 @@ async function boot() {
     return;
   }
 
-  // 已有 token：先静默校验，失效则回到登录页
+  // 已有 token：先静默校验，失效或不在名单内则回到登录页
   try {
-    await gh.fetchUser();
+    const user = await gh.fetchUser();
+    if (!isAllowedUser(user.login)) {
+      rejectLogin(user.login, '不在允许名单内，已自动退出');
+      renderLogin(root);
+      return;
+    }
   } catch (e) {
     gh.logout();
     renderLogin(root);
