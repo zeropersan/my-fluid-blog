@@ -32,6 +32,10 @@ jobs:
         run: npx hexo generate
 
       - uses: actions/configure-pages@v5
+        with:
+          # 仓库尚未启用 Pages 时尝试自动启用（依赖上面的 pages: write 权限）
+          # 若因账号策略失败，改在 Settings → Pages → Source 选 "GitHub Actions" 即可
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
