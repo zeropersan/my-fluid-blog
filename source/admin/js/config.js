@@ -65,6 +65,8 @@ export const LS = {
   repo: 'fluid-admin-repo',
   compress: 'fluid-admin-compress',
   imgUrlMode: 'fluid-admin-img-url-mode',
+  /** 进行中的 Device Flow，用于手机切换 App 后页面被回收时恢复轮询 */
+  deviceFlow: 'fluid-admin-device-flow',
   autosave: (path) => `fluid-admin-autosave:${path}`,
 };
 

@@ -181,6 +181,8 @@ function renderLogin(root) {
             </details>
           </div>
 
+          <div data-role="oauth-error" class="adm-neterr adm-hidden"></div>
+
           <div data-role="oauth-wait" class="adm-hidden">
             <p class="adm-small">请在 GitHub 页面输入下面的设备码：</p>
             <code class="adm-device-code" data-role="user-code"></code>
@@ -212,13 +214,165 @@ function renderLogin(root) {
   let cancelled = false;
   let verifyUri = 'https://github.com/login/device';
 
+  const el = (sel) => $(sel, root);
+
   /** 从「等待授权」退回「开始授权」 */
   const showStart = () => {
-    const wait = $('[data-role="oauth-wait"]', root);
-    const start = $('[data-role="oauth-start"]', root);
+    const wait = el('[data-role="oauth-wait"]');
+    const start = el('[data-role="oauth-start"]');
     if (wait) wait.classList.add('adm-hidden');
     if (start) start.classList.remove('adm-hidden');
   };
+
+  const showWait = (userCode, statusText) => {
+    const start = el('[data-role="oauth-start"]');
+    const wait = el('[data-role="oauth-wait"]');
+    if (start) start.classList.add('adm-hidden');
+    if (wait) wait.classList.remove('adm-hidden');
+    const codeEl = el('[data-role="user-code"]');
+    if (codeEl) codeEl.textContent = userCode;
+    const st = el('[data-role="oauth-status"]');
+    if (st) st.textContent = statusText;
+  };
+
+  const showNetError = (html) => {
+    const box = el('[data-role="oauth-error"]');
+    if (!box) return;
+    box.innerHTML = html;
+    box.classList.remove('adm-hidden');
+  };
+  const hideNetError = () => {
+    const box = el('[data-role="oauth-error"]');
+    if (box) { box.classList.add('adm-hidden'); box.innerHTML = ''; }
+  };
+
+  /* ---------- 进行中的授权：持久化，供手机切 App 回来后续跑 ---------- */
+  const readPending = () => {
+    try {
+      const raw = safeGet(LS.deviceFlow);
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      if (!o || !o.deviceCode || !o.expiresAt) return null;
+      if (o.expiresAt <= Date.now()) { safeRemove(LS.deviceFlow); return null; }
+      return o;
+    } catch (e) { return null; }
+  };
+  const savePending = (o) => safeSet(LS.deviceFlow, JSON.stringify(o));
+  const clearPending = () => safeRemove(LS.deviceFlow);
+
+  /**
+   * 执行（或续跑）一次 Device Flow
+   * @param {string} cid
+   * @param {object} [resume] 已保存的流程；不传表示全新发起
+   */
+  async function runFlow(cid, resume) {
+    hideNetError();
+
+    let flow = resume;
+    if (!flow) {
+      const dev = await gh.startDeviceFlow(cid);
+      flow = {
+        clientId: cid,
+        deviceCode: dev.device_code,
+        userCode: dev.user_code,
+        verificationUri: dev.verification_uri,
+        interval: dev.interval,
+        expiresAt: Date.now() + dev.expires_in * 1000,
+      };
+      savePending(flow);
+    }
+
+    verifyUri = flow.verificationUri || verifyUri;
+    const remainMin = Math.max(0, Math.round((flow.expiresAt - Date.now()) / 60000));
+    showWait(flow.userCode, `等待授权…（设备码还有约 ${remainMin} 分钟有效）`);
+
+    cancelled = false;
+    const remainSec = Math.max(10, Math.round((flow.expiresAt - Date.now()) / 1000));
+    const result = await gh.pollDeviceFlow(
+      flow.clientId, flow.deviceCode, flow.interval, remainSec,
+      (state) => {
+        if (cancelled) return;
+        const st = el('[data-role="oauth-status"]');
+        if (!st) return;
+        if (state === 'slow_down') st.textContent = '请求过于频繁，正在放慢轮询…';
+        else if (state === 'network') st.textContent = '网络抖动，正在重试…';
+        else st.textContent = '仍在等待你在 GitHub 上确认…';
+      }
+    );
+    if (cancelled) return;
+
+    clearPending();
+    gh.setToken(result.accessToken);
+    ctx.repoFull = detectRepo().full;
+
+    const user = await gh.fetchUser();
+    if (!isAllowedUser(user.login)) {
+      rejectLogin(user.login, '不在允许名单内，已拒绝登录');
+      showStart();
+      return;
+    }
+    // 与 PAT 路径保持一致：确认对该仓库确有写权限
+    const repoInfo = await gh.getRepoInfo(ctx.repoFull);
+    if (!(repoInfo.permissions && repoInfo.permissions.push)) {
+      gh.logout();
+      showStart();
+      toast(`账号 ${user.login} 对该仓库没有写权限`, 'err', 9000);
+      return;
+    }
+
+    toast('登录成功，欢迎 ' + user.login, 'ok');
+    renderApp(document.getElementById('adm-root'));
+  }
+
+  /**
+   * 网络层失败时的诊断
+   * fetch 抛出的 "Failed to fetch" 没有信息量，这里再探一次 api.github.com
+   * （它开放 CORS，可以直接探），从而区分「只有 github.com 不通」和「整体断网」。
+   */
+  async function diagnoseNetwork(err) {
+    const host = err.host || 'github.com';
+    showStart();
+    const st = el('[data-role="oauth-status"]');
+    if (st) st.textContent = '正在检测网络…';
+
+    const apiOk = await gh.probeApiReachable();
+    const headline = apiOk
+      ? `连不上 <code>${esc(host)}</code>，但 <code>api.github.com</code> 是通的。`
+      : `连不上 <code>${esc(host)}</code>，<code>api.github.com</code> 也连不上。`;
+
+    const causes = apiOk
+      ? ['当前网络屏蔽了 github.com 这个域名（移动数据、公司或校园网常见）',
+         '浏览器的广告拦截 / 云加速 / 代理插件拦截了跨域请求',
+         '该设备没有走代理，而 github.com 需要代理才能访问']
+      : ['设备当前似乎整体断网', '需要检查 Wi-Fi 或移动数据连接'];
+
+    showNetError(`
+      <strong>${headline}</strong>
+      <p class="adm-small" style="margin:.5rem 0 .35rem">可能的原因：</p>
+      <ul class="adm-steps" style="margin:0 0 .6rem">
+        ${causes.map((c) => `<li>${esc(c)}</li>`).join('')}
+      </ul>
+      <p class="adm-small" style="margin:0 0 .6rem">
+        <strong>建议</strong>：${apiOk
+          ? '你的账号权限没问题，改用 Token 方式登录即可 —— Token 走 api.github.com，不受这个域名影响。'
+          : '先恢复网络再重试，或改用 Token 方式登录。'}
+      </p>
+      <div class="adm-row adm-row-wrap">
+        <button class="adm-btn adm-btn-sm adm-btn-primary" data-act="goto-pat">改用 Token 登录</button>
+        <button class="adm-btn adm-btn-sm adm-btn-ghost" data-act="oauth-start">重试</button>
+      </div>
+    `);
+    toast('登录失败：' + err.message, 'err', 9000);
+  }
+
+  // 上一次授权还没完成（手机切到 GitHub 时浏览器把页面回收了），自动续跑
+  const pending = readPending();
+  if (pending) {
+    runFlow(pending.clientId, pending).catch((e) => {
+      if (e.network) diagnoseNetwork(e);
+      else { showStart(); toast('授权失败：' + e.message, 'err', 9000); }
+    });
+  }
 
   // 监听挂在登录容器上而不是 root 上：
   // 登录成功后 root.innerHTML 会被主界面替换，旧的监听器随之一起销毁，
@@ -271,55 +425,33 @@ function renderLogin(root) {
     /* ---------- 发起 Device Flow ---------- */
     if (act === 'oauth-start') {
       // Client ID 已配置时登录页不渲染输入框，此时从配置/本地读取
-      const cidEl = $('[data-role="cid"]', root);
+      const cidEl = el('[data-role="cid"]');
       const cid = (cidEl ? cidEl.value : (safeGet(LS.clientId) || DEFAULT_CLIENT_ID)).trim();
       if (!cid) return toast('请先填写 Client ID', 'err');
       safeSet(LS.clientId, cid);
 
       btn.disabled = true;
       try {
-        const dev = await gh.startDeviceFlow(cid);
-        verifyUri = dev.verification_uri || verifyUri;
-        $('[data-role="oauth-start"]', root).classList.add('adm-hidden');
-        $('[data-role="oauth-wait"]', root).classList.remove('adm-hidden');
-        $('[data-role="user-code"]', root).textContent = dev.user_code;
-        $('[data-role="oauth-status"]', root).textContent =
-          `等待授权…（设备码 ${Math.round(dev.expires_in / 60)} 分钟内有效）`;
-
-        cancelled = false;
-        const token = await gh.pollDeviceFlow(cid, dev.device_code, dev.interval, dev.expires_in, (state) => {
-          if (cancelled) return;
-          $('[data-role="oauth-status"]', root).textContent =
-            state === 'slow_down' ? '请求过于频繁，正在放慢轮询…' : '仍在等待你在 GitHub 上确认…';
-        });
-        if (cancelled) return;
-
-        gh.setToken(token);
-        ctx.repoFull = detectRepo().full;
-
-        const user = await gh.fetchUser();
-        if (!isAllowedUser(user.login)) {
-          rejectLogin(user.login, '不在允许名单内，已拒绝登录');
-          showStart();
-          return;
-        }
-        // 与 PAT 路径保持一致：确认对该仓库确有写权限
-        const repoInfo = await gh.getRepoInfo(ctx.repoFull);
-        if (!(repoInfo.permissions && repoInfo.permissions.push)) {
-          gh.logout();
-          showStart();
-          toast(`账号 ${user.login} 对该仓库没有写权限`, 'err', 9000);
-          return;
-        }
-
-        toast('登录成功，欢迎 ' + user.login, 'ok');
-        renderApp(document.getElementById('adm-root'));
+        await runFlow(cid, null);
       } catch (err) {
-        if (!cancelled) toast('授权失败：' + err.message, 'err', 8000);
-        showStart();
+        if (cancelled) {
+          showStart();
+        } else if (err.network) {
+          await diagnoseNetwork(err);
+        } else {
+          showStart();
+          toast('授权失败：' + err.message, 'err', 9000);
+        }
       } finally {
         btn.disabled = false;
       }
+      return;
+    }
+
+    /* ---------- 网络错误时一键切到 Token 登录 ---------- */
+    if (act === 'goto-pat') {
+      const patTab = root.querySelector('[data-tab="pat"]');
+      if (patTab) patTab.click();
       return;
     }
 
@@ -337,8 +469,8 @@ function renderLogin(root) {
 
     if (act === 'oauth-cancel') {
       cancelled = true;
-      $('[data-role="oauth-wait"]', root).classList.add('adm-hidden');
-      $('[data-role="oauth-start"]', root).classList.remove('adm-hidden');
+      clearPending();
+      showStart();
       toast('已取消授权', 'info');
     }
   });

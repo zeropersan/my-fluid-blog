@@ -48,6 +48,69 @@ export class GitHubError extends Error {
   }
 }
 
+/* ==========================================================================
+   网络层错误处理
+   --------------------------------------------------------------------------
+   fetch 只在「根本没拿到响应」时才抛 TypeError，浏览器统一报成 "Failed to fetch"。
+   触发条件包括：DNS 解析失败、连接超时或被重置、被代理/防火墙拦截、
+  CORS 预检被拒。这句话对用户毫无信息量，所以这里把它翻译成：
+     · 明确指出是哪个域名连不上
+     · 给出可操作的排查方向
+   并用 err.network = true 打标，供 UI 决定是否引导切到 Token 方式。
+   ========================================================================== */
+
+function hostOf(url) {
+  try { return new URL(url, location.href).host; } catch (e) { return url; }
+}
+
+function networkError(url, cause) {
+  const host = hostOf(url);
+  const err = new GitHubError(
+    `无法连接 ${host}。` +
+    '可能是：当前网络屏蔽了该域名、需要代理、移动数据与 Wi-Fi 表现不同、' +
+    '或浏览器拦截了跨域请求。',
+    0, null
+  );
+  err.network = true;
+  err.host = host;
+  err.cause = cause;
+  return err;
+}
+
+/** 包一层 fetch：加超时 + 把网络层异常转成可读的 GitHubError */
+async function safeFetch(url, init, timeoutMs = 20000) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    return await fetch(url, ctrl ? Object.assign({}, init, { signal: ctrl.signal }) : init);
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      const err = new GitHubError(`连接 ${hostOf(url)} 超时（${Math.round(timeoutMs / 1000)} 秒无响应）`, 0, null);
+      err.network = true;
+      err.timeout = true;
+      err.host = hostOf(url);
+      throw err;
+    }
+    throw networkError(url, e);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * 探测 api.github.com 是否可达（该域名的 CORS 是 *，可以直接探）。
+ * github.com 没有 CORS 开放的普通端点，只能在真正发起 OAuth 请求时才知道结果，
+ * 所以这里只探 api，用于区分「整体断网」和「只有 github.com 不通」。
+ */
+export async function probeApiReachable() {
+  try {
+    const res = await fetch(`${API}/zen?t=${Date.now()}`, { cache: 'no-store' });
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * 调用 GitHub REST API
  * @param {string} path  以 / 开头的路径，如 /repos/o/r/contents/x
@@ -64,18 +127,13 @@ export async function api(path, opts = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  let res;
-  try {
-    res = await fetch(API + path, {
-      method: opts.method || 'GET',
-      headers,
-      body: opts.body === undefined
-        ? undefined
-        : (opts.body instanceof ArrayBuffer ? opts.body : JSON.stringify(opts.body)),
-    });
-  } catch (e) {
-    throw new GitHubError('网络请求失败，请检查网络或代理设置', 0, null);
-  }
+  const res = await safeFetch(API + path, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body === undefined
+      ? undefined
+      : (opts.body instanceof ArrayBuffer ? opts.body : JSON.stringify(opts.body)),
+  });
 
   if (opts.raw) return res;
 
@@ -137,20 +195,37 @@ export async function validatePat(pat, repoFull) {
 /**
  * 第一步：申请设备码
  * 用 form-urlencoded 发送（属于 CORS 简单请求，不会触发预检）
+ * 移动网络容易抖动，这里对网络层失败自动重试一次。
  */
-export async function startDeviceFlow(clientId) {
-  const res = await fetch(`${OAUTH}/device/code`, {
+export async function startDeviceFlow(clientId, opts = {}) {
+  const body = new URLSearchParams({ client_id: clientId, scope: OAUTH_SCOPE }).toString();
+  const init = {
     method: 'POST',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ client_id: clientId, scope: OAUTH_SCOPE }).toString(),
-  });
+    body,
+  };
+
+  let res;
+  try {
+    res = await safeFetch(`${OAUTH}/device/code`, init, opts.timeout || 25000);
+  } catch (e) {
+    if (e.network && !e.timeout) {
+      // 再给一次机会，短暂丢包很常见
+      await new Promise((r) => setTimeout(r, 1200));
+      res = await safeFetch(`${OAUTH}/device/code`, init, opts.timeout || 25000);
+    } else {
+      throw e;
+    }
+  }
+
   const data = await res.json().catch(() => null);
   if (!res.ok || !data || data.error) {
     throw new GitHubError(
-      (data && (data.error_description || data.error)) || '无法获取设备码，请检查 Client ID 是否正确、是否已启用 Device Flow',
+      (data && (data.error_description || data.error)) ||
+        '无法获取设备码，请检查 Client ID 是否正确、OAuth App 是否已启用 Device Flow',
       res.status, data
     );
   }
@@ -163,32 +238,50 @@ export async function startDeviceFlow(clientId) {
  * @param {string} deviceCode
  * @param {number} interval      秒
  * @param {number} expiresIn     秒
- * @param {(state:string)=>void} onState  用于 UI 反馈（pending / slow_down）
+ * @param {(state:string)=>void} onState  用于 UI 反馈
  */
 export async function pollDeviceFlow(clientId, deviceCode, interval, expiresIn, onState) {
   const deadline = Date.now() + expiresIn * 1000;
   let wait = Math.max(interval || 5, 5);
+  let netFails = 0;
 
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, wait * 1000));
 
-    const res = await fetch(`${OAUTH}/oauth/access_token`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        device_code: deviceCode,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-      }).toString(),
-    });
+    let res;
+    try {
+      res = await safeFetch(`${OAUTH}/oauth/access_token`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: clientId,
+          device_code: deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }).toString(),
+      }, 20000);
+      netFails = 0;
+    } catch (e) {
+      // 轮询期间偶发断网不应终结整个授权流程（尤其在手机上切来切去的时候）
+      netFails++;
+      if (netFails >= 3) throw e;
+      if (onState) onState('network');
+      continue;
+    }
 
     const data = await res.json().catch(() => null);
     if (!data) continue;
 
-    if (data.access_token) return data.access_token;
+    if (data.access_token) {
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || null,
+        expiresIn: data.expires_in || null,
+        scope: data.scope || null,
+      };
+    }
 
     switch (data.error) {
       case 'authorization_pending':
