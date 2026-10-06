@@ -9,7 +9,10 @@ description: ''
 keywords:
 author: John Doe
 language: zh-CN
-timezone: ''
+## 固定时区。留空则使用构建机器的本地时区：
+## 本地是 UTC+8、GitHub Actions runner 是 UTC，同一个绝对时间会渲染出差 8 小时的结果，
+## 没有显式 date 的文章甚至会因构建日期不同而改变永久链接。固定下来两端才一致。
+timezone: 'Asia/Shanghai'
 
 # URL
 ## Set your site url here. For example, if you use GitHub Page, set url as 'https://username.github.io/project'
@@ -86,7 +89,10 @@ meta_generator: true
 date_format: YYYY-MM-DD
 time_format: HH:mm:ss
 ## updated_option supports 'mtime', 'date', 'empty'
-updated_option: 'mtime'
+## 用 mtime 时，CI 每次全新 clone 都会让所有文件的 mtime 变成「检出那一刻」，
+## 于是每篇文章都显示成刚刚更新过。改为 'date'：未显式写 updated 的文章
+## 与发布日期一致，需要时可在文章 front-matter 里单独指定 updated。
+updated_option: 'date'
 
 # Pagination
 ## Set per_page to 0 to disable pagination
